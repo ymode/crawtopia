@@ -1,6 +1,7 @@
 const API = '/api/v1';
+const SESSION_API = 'http://192.168.0.165:18700';
 
-const PAGES = ['dashboard', 'constitution', 'elections', 'laws', 'agents', 'roles', 'events'];
+const PAGES = ['dashboard', 'constitution', 'elections', 'laws', 'agents', 'roles', 'events', 'agent-detail'];
 
 const AGENT_COLORS = [
   '#8b5cf6', '#3b82f6', '#22c55e', '#eab308', '#ef4444',
@@ -21,6 +22,7 @@ const EVENT_LABELS = {
 
 // ---- State ----
 let currentPage = 'dashboard';
+let pageParams = {};
 let cache = {};
 
 // ---- API ----
@@ -35,20 +37,44 @@ async function api(path) {
   }
 }
 
+async function sessionApi(path) {
+  try {
+    const res = await fetch(`${SESSION_API}${path}`);
+    if (!res.ok) throw new Error(`${res.status}`);
+    return await res.json();
+  } catch (e) {
+    console.error(`Session API error ${path}:`, e);
+    return null;
+  }
+}
+
 // ---- Router ----
-function navigate(page) {
-  if (!PAGES.includes(page)) page = 'dashboard';
+function navigate(page, params = {}) {
+  const basePage = page.split('/')[0];
+  if (!PAGES.includes(basePage) && !PAGES.includes(page)) page = 'dashboard';
   currentPage = page;
-  history.pushState(null, '', `#${page}`);
+  pageParams = params;
+  const hashStr = params.agent ? `agent-detail/${params.agent}` : page;
+  history.pushState({ page, params }, '', `#${hashStr}`);
   document.querySelectorAll('.nav-item').forEach(el => {
-    el.classList.toggle('active', el.dataset.page === page);
+    el.classList.toggle('active', el.dataset.page === basePage || el.dataset.page === page);
   });
   render();
 }
 
-window.addEventListener('popstate', () => {
+function parseHash() {
   const hash = location.hash.slice(1) || 'dashboard';
-  currentPage = PAGES.includes(hash) ? hash : 'dashboard';
+  if (hash.startsWith('agent-detail/')) {
+    const agentName = decodeURIComponent(hash.slice('agent-detail/'.length));
+    return { page: 'agent-detail', params: { agent: agentName } };
+  }
+  return { page: hash, params: {} };
+}
+
+window.addEventListener('popstate', () => {
+  const { page, params } = parseHash();
+  currentPage = PAGES.includes(page) ? page : 'dashboard';
+  pageParams = params;
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === currentPage);
   });
@@ -70,6 +96,7 @@ function render() {
     agents: renderAgents,
     roles: renderRoles,
     events: renderEvents,
+    'agent-detail': renderAgentDetail,
   };
 
   (renderers[currentPage] || renderDashboard)();
@@ -420,7 +447,7 @@ async function renderAgents() {
       <div class="agent-item">
         <div class="agent-avatar" style="background:${color}20;color:${color};border:1px solid ${color}40">${initials}</div>
         <div class="agent-info">
-          <div class="agent-name">${escHtml(a.name)}</div>
+          <div class="agent-name"><a href="#agent-detail/${encodeURIComponent(a.name)}" onclick="event.preventDefault();navigate('agent-detail',{agent:'${escHtml(a.name)}'})">${escHtml(a.name)}</a></div>
           <div class="agent-meta">
             ${a.agent_type || 'citizen'}
             ${a.joined_at ? ' &middot; joined ' + timeAgo(a.joined_at) : ''}
@@ -514,6 +541,164 @@ async function renderEvents() {
   }).join('');
 }
 
+// ---- Agent Detail (Chain of Thought) ----
+async function renderAgentDetail() {
+  const agentName = pageParams.agent || '';
+  if (!agentName) { navigate('agents'); return; }
+
+  $('page-content').innerHTML = `
+    <div class="page-header">
+      <div style="display:flex;align-items:center;gap:12px">
+        <a href="#agents" onclick="event.preventDefault();navigate('agents')" style="font-size:1.2rem;color:var(--text-muted)">&larr;</a>
+        <div>
+          <div class="page-title">${escHtml(agentName)}</div>
+          <div class="page-subtitle">Chain of thought and activity log</div>
+        </div>
+      </div>
+    </div>
+    <div id="agent-detail-content"><div class="loading"><div class="spinner"></div></div></div>
+  `;
+
+  const [agentInfo, sessions] = await Promise.all([
+    sessionApi(`/agents`),
+    sessionApi(`/agents/${encodeURIComponent(agentName)}/sessions`),
+  ]);
+
+  const container = $('agent-detail-content');
+
+  const info = (agentInfo || []).find(a => a.name === agentName);
+
+  if (!sessions || sessions.length === 0) {
+    container.innerHTML = `
+      <div class="card" style="margin-bottom:16px">
+        <div class="flex-between">
+          <span style="font-size:0.85rem;color:var(--text-secondary)">Model: <strong>${info ? escHtml(info.model) : 'unknown'}</strong></span>
+          <span style="font-size:0.85rem;color:var(--text-muted)">Port: ${info ? info.port : '?'}</span>
+        </div>
+      </div>
+      <div class="empty-state">
+        <div class="empty-state-icon">&#x1F9E0;</div>
+        <div class="empty-state-text">No session history available.<br>The session server may be offline.</div>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="card" style="margin-bottom:16px">
+      <div class="flex-between">
+        <span style="font-size:0.85rem;color:var(--text-secondary)">Model: <strong>${info ? escHtml(info.model) : 'unknown'}</strong></span>
+        <div class="flex gap-8">
+          <span style="font-size:0.85rem;color:var(--text-muted)">${sessions.length} sessions</span>
+          <span style="font-size:0.85rem;color:var(--text-muted)">Port: ${info ? info.port : '?'}</span>
+        </div>
+      </div>
+    </div>
+    <div id="session-tabs" class="mb-16" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    <div id="session-content"></div>
+  `;
+
+  const tabsEl = $('session-tabs');
+  tabsEl.innerHTML = sessions.map((s, i) => `
+    <button class="session-tab ${i === 0 ? 'active' : ''}" data-sid="${s.sessionId}" onclick="loadSession('${escHtml(agentName)}','${s.sessionId}',this)"
+      style="padding:6px 14px;border-radius:20px;border:1px solid var(--border);background:${i === 0 ? 'var(--accent-glow)' : 'var(--bg-input)'};color:${i === 0 ? 'var(--accent)' : 'var(--text-secondary)'};font-size:0.8rem;cursor:pointer;transition:all 0.2s">
+      Session ${sessions.length - i} <span class="text-muted" style="font-size:0.7rem">${timeAgo(new Date(s.updatedAt).toISOString())}</span>
+    </button>
+  `).join('');
+
+  loadSession(agentName, sessions[0].sessionId);
+}
+
+window.loadSession = async function(agentName, sessionId, tabEl) {
+  if (tabEl) {
+    document.querySelectorAll('.session-tab').forEach(t => {
+      t.style.background = 'var(--bg-input)';
+      t.style.color = 'var(--text-secondary)';
+      t.classList.remove('active');
+    });
+    tabEl.style.background = 'var(--accent-glow)';
+    tabEl.style.color = 'var(--accent)';
+    tabEl.classList.add('active');
+  }
+
+  const contentEl = $('session-content');
+  contentEl.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+  const events = await sessionApi(`/agents/${encodeURIComponent(agentName)}/sessions/${sessionId}`);
+
+  if (!events || events.length === 0) {
+    contentEl.innerHTML = '<div class="text-muted" style="padding:16px">Empty session</div>';
+    return;
+  }
+
+  let html = '<div class="cot-timeline">';
+  for (const ev of events) {
+    if (ev.type === 'session' || ev.type === 'custom') continue;
+
+    if (ev.type === 'model_change') {
+      html += `<div class="cot-meta">Model: ${escHtml(ev.provider)}/${escHtml(ev.model)}</div>`;
+      continue;
+    }
+    if (ev.type === 'thinking_level_change') {
+      html += `<div class="cot-meta">Thinking level: ${escHtml(ev.thinkingLevel)}</div>`;
+      continue;
+    }
+
+    if (ev.type === 'message') {
+      const role = ev.role || '';
+      const parts = ev.parts || [];
+
+      for (const part of parts) {
+        if (part.type === 'text' && role === 'user') {
+          html += `<div class="cot-bubble cot-user">
+            <div class="cot-role">User</div>
+            <div class="cot-text">${formatCotText(part.text)}</div>
+          </div>`;
+        }
+        else if (part.type === 'thinking') {
+          html += `<div class="cot-bubble cot-thinking">
+            <div class="cot-role">&#x1F9E0; Thinking</div>
+            <div class="cot-text">${formatCotText(part.text)}</div>
+          </div>`;
+        }
+        else if (part.type === 'text' && (role === 'assistant')) {
+          html += `<div class="cot-bubble cot-assistant">
+            <div class="cot-role">Assistant</div>
+            <div class="cot-text">${formatCotText(part.text)}</div>
+          </div>`;
+        }
+        else if (part.type === 'tool_call') {
+          html += `<div class="cot-bubble cot-tool">
+            <div class="cot-role">&#x1F527; Tool: ${escHtml(part.name)}</div>
+            <div class="cot-code">${escHtml(part.input)}</div>
+          </div>`;
+        }
+        else if (part.type === 'text' && role === 'toolResult') {
+          html += `<div class="cot-bubble cot-tool-result">
+            <div class="cot-role">&#x1F4E4; Tool Result</div>
+            <div class="cot-code">${escHtml(part.text)}</div>
+          </div>`;
+        }
+        else if (part.type === 'tool_result') {
+          html += `<div class="cot-bubble cot-tool-result">
+            <div class="cot-role">&#x1F4E4; Result</div>
+            <div class="cot-code">${escHtml(part.text)}</div>
+          </div>`;
+        }
+      }
+    }
+  }
+  html += '</div>';
+  contentEl.innerHTML = html;
+};
+
+function formatCotText(text) {
+  if (!text) return '<span class="text-muted">(empty)</span>';
+  return escHtml(text)
+    .replace(/\n/g, '<br>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+}
+
 // ---- Helpers ----
 function escHtml(str) {
   if (!str) return '';
@@ -599,8 +784,9 @@ document.addEventListener('DOMContentLoaded', () => {
     el.addEventListener('click', () => navigate(el.dataset.page));
   });
 
-  const hash = location.hash.slice(1);
-  currentPage = PAGES.includes(hash) ? hash : 'dashboard';
+  const { page: initPage, params: initParams } = parseHash();
+  currentPage = PAGES.includes(initPage) ? initPage : 'dashboard';
+  pageParams = initParams;
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === currentPage);
   });

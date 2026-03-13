@@ -520,6 +520,104 @@ a:hover { color: #a78bfa; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
+/* Chain of Thought Timeline */
+.cot-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cot-meta {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  padding: 4px 0;
+  font-style: italic;
+}
+
+.cot-bubble {
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.cot-role {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.cot-text {
+  font-size: 0.88rem;
+  line-height: 1.7;
+  color: var(--text-primary);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.cot-text code {
+  background: var(--bg-input);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.cot-code {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border-radius: var(--radius-xs);
+  padding: 10px 12px;
+}
+
+.cot-user {
+  background: rgba(59, 130, 246, 0.06);
+  border-color: rgba(59, 130, 246, 0.2);
+}
+.cot-user .cot-role { color: var(--info); }
+
+.cot-thinking {
+  background: rgba(234, 179, 8, 0.04);
+  border-color: rgba(234, 179, 8, 0.15);
+  border-style: dashed;
+}
+.cot-thinking .cot-role { color: var(--warning); }
+.cot-thinking .cot-text { color: var(--text-secondary); font-style: italic; }
+
+.cot-assistant {
+  background: rgba(139, 92, 246, 0.06);
+  border-color: rgba(139, 92, 246, 0.2);
+}
+.cot-assistant .cot-role { color: var(--accent); }
+
+.cot-tool {
+  background: rgba(6, 182, 212, 0.04);
+  border-color: rgba(6, 182, 212, 0.15);
+}
+.cot-tool .cot-role { color: #06b6d4; }
+
+.cot-tool-result {
+  background: rgba(20, 184, 166, 0.04);
+  border-color: rgba(20, 184, 166, 0.15);
+}
+.cot-tool-result .cot-role { color: #14b8a6; }
+
+.session-tab:hover {
+  border-color: var(--accent-dim) !important;
+}
+
 /* Utility */
 .mt-16 { margin-top: 16px; }
 .mt-24 { margin-top: 24px; }
