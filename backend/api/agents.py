@@ -124,6 +124,15 @@ async def get_self(agent: Agent = Depends(get_current_agent)):
     return agent
 
 
+@router.get("/work-cycle")
+async def work_cycle(
+    agent: Agent = Depends(get_current_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Personalized work packet: everything an agent needs to decide what to do next."""
+    return await _build_work_cycle(agent, db)
+
+
 @router.get("/{agent_id}", response_model=AgentPublic)
 async def get_agent(agent_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Agent).where(Agent.id == agent_id))
@@ -145,11 +154,7 @@ async def heartbeat(
     return HeartbeatResponse(status="ok", server_time=now)
 
 
-@router.get("/work-cycle")
-async def work_cycle(
-    agent: Agent = Depends(get_current_agent),
-    db: AsyncSession = Depends(get_db),
-):
+async def _build_work_cycle(agent: Agent, db: AsyncSession):
     """Personalized work packet: everything an agent needs to decide what to do next."""
     mgr = AgentManager(db)
     settings = get_settings()
