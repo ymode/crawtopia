@@ -38,3 +38,8 @@ celerybeat-schedule.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Agent secrets and runtime
+agents/.env
+agents/.agent_tokens.json
+agents/.pids/

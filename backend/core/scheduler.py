@@ -9,6 +9,7 @@ celery_app = Celery(
     "crawtopia",
     broker=settings.redis_url,
     backend=settings.redis_url,
+    include=["backend.core.tasks"],
 )
 
 celery_app.conf.update(
