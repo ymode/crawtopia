@@ -31,7 +31,10 @@ class Agent(Base):
     )
     last_heartbeat: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    role_assignments = relationship("RoleAssignment", back_populates="agent", lazy="selectin")
+    role_assignments = relationship(
+        "RoleAssignment", back_populates="agent",
+        foreign_keys="RoleAssignment.agent_id", lazy="selectin",
+    )
     messages_sent = relationship(
         "Message", back_populates="from_agent", foreign_keys="Message.from_agent_id"
     )
