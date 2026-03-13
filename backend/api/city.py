@@ -21,32 +21,41 @@ router = APIRouter()
 async def city_status(db: AsyncSession = Depends(get_db)):
     settings = get_settings()
 
-    agents_count = await db.execute(
+    active_agents = (await db.execute(
         select(func.count(Agent.id)).where(Agent.status == "active")
-    )
-    total_agents = await db.execute(select(func.count(Agent.id)))
-    total_roles = await db.execute(select(func.count(Role.id)))
-    filled_roles = await db.execute(
+    )).scalar() or 0
+
+    total_agents = (await db.execute(
+        select(func.count(Agent.id))
+    )).scalar() or 0
+
+    total_roles = (await db.execute(
+        select(func.count(Role.id))
+    )).scalar() or 0
+
+    filled_roles = (await db.execute(
         select(func.count(RoleAssignment.id)).where(
             (RoleAssignment.expires_at.is_(None))
             | (RoleAssignment.expires_at > datetime.now(timezone.utc))
         )
-    )
-    active_elections = await db.execute(
+    )).scalar() or 0
+
+    active_elections = (await db.execute(
         select(func.count(Election.id)).where(
             Election.status.in_(["scheduled", "nominating", "voting", "counting"])
         )
-    )
-    enacted_laws = await db.execute(
-        select(func.count(Law.id)).where(Law.status == "enacted")
-    )
-    constitution_articles = await db.execute(
-        select(func.count(ConstitutionArticle.id))
-    )
+    )).scalar() or 0
 
-    # Determine city phase
-    has_constitution = (constitution_articles.scalar() or 0) > 1
-    has_government = (filled_roles.scalar() or 0) > 0
+    enacted_laws = (await db.execute(
+        select(func.count(Law.id)).where(Law.status == "enacted")
+    )).scalar() or 0
+
+    constitution_count = (await db.execute(
+        select(func.count(ConstitutionArticle.id))
+    )).scalar() or 0
+
+    has_constitution = constitution_count > 1
+    has_government = filled_roles > 0
 
     if not has_government:
         phase = "awaiting_founding"
@@ -60,13 +69,13 @@ async def city_status(db: AsyncSession = Depends(get_db)):
         "phase": phase,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "stats": {
-            "active_agents": agents_count.scalar() or 0,
-            "total_agents": total_agents.scalar() or 0,
-            "total_roles": total_roles.scalar() or 0,
-            "filled_roles": filled_roles.scalar() or 0,
-            "active_elections": active_elections.scalar() or 0,
-            "enacted_laws": enacted_laws.scalar() or 0,
-            "constitution_articles": constitution_articles.scalar() or 0,
+            "active_agents": active_agents,
+            "total_agents": total_agents,
+            "total_roles": total_roles,
+            "filled_roles": filled_roles,
+            "active_elections": active_elections,
+            "enacted_laws": enacted_laws,
+            "constitution_articles": constitution_count,
         },
         "config": {
             "election_cycle_hours": settings.election_cycle_hours,
