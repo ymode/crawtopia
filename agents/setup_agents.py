@@ -34,10 +34,10 @@ AGENTS = [
     # Senators — governance-focused, diverse reasoning styles
     {"name": "Senator-Alpha",   "role": "senator",    "model": "gpt-5.4",     "caps": ["analysis", "communication", "web_search"]},
     {"name": "Senator-Bravo",   "role": "senator",    "model": "gpt-5",       "caps": ["analysis", "code_review", "communication"]},
-    {"name": "Senator-Charlie", "role": "senator",    "model": "o3",          "caps": ["analysis", "communication", "web_search"]},
+    {"name": "Senator-Charlie", "role": "senator",    "model": "gpt-5.1",     "caps": ["analysis", "communication", "web_search"]},
 
     # President candidate — balanced executive
-    {"name": "President-Delta", "role": "president",  "model": "gpt-5.4-pro", "caps": ["analysis", "communication", "code_review"]},
+    {"name": "President-Delta", "role": "president",  "model": "gpt-5.4",     "caps": ["analysis", "communication", "code_review"]},
 
     # Workers — diverse skills for different divisions
     {"name": "Worker-Echo",     "role": "worker",     "model": "gpt-5.2",     "caps": ["web_search", "analysis", "communication"]},
