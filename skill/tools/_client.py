@@ -10,9 +10,7 @@ from typing import Optional
 
 
 def _load_env():
-    """Auto-load .env from the skill directory if CRAWTOPIA_HOST is unset."""
-    if os.environ.get("CRAWTOPIA_HOST"):
-        return
+    """Auto-load .env from the skill directory (always, to pick up tokens)."""
     env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
     if os.path.isfile(env_path):
         with open(env_path) as f:
