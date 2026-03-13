@@ -100,7 +100,18 @@ async def list_laws(
     if status:
         query = query.where(Law.status == status)
     result = await db.execute(query)
-    return result.scalars().all()
+    laws = result.scalars().all()
+
+    response = []
+    for law in laws:
+        law_data = LawPublic.model_validate(law)
+        proposer = (await db.execute(
+            select(Agent.name).where(Agent.id == law.proposed_by)
+        )).scalar()
+        law_data.proposer_name = proposer or "Unknown"
+        response.append(law_data)
+
+    return response
 
 
 @router.post("/laws/propose", response_model=LawPublic, status_code=201)

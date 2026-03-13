@@ -15,6 +15,7 @@ from backend.schemas.agent import (
     AgentRegisterResponse,
     AgentPublic,
     AgentBrief,
+    RoleAssignmentPublic,
     HeartbeatResponse,
 )
 from backend.core.auth import hash_token, get_current_agent
@@ -69,7 +70,7 @@ async def register_agent(
     )
 
 
-@router.get("/", response_model=list[AgentBrief])
+@router.get("/", response_model=list[AgentPublic])
 async def list_agents(
     status: str | None = None,
     db: AsyncSession = Depends(get_db),
@@ -78,7 +79,26 @@ async def list_agents(
     if status:
         query = query.where(Agent.status == status)
     result = await db.execute(query)
-    return result.scalars().all()
+    agents = result.scalars().all()
+
+    response = []
+    for agent in agents:
+        roles = []
+        for ra in (agent.role_assignments or []):
+            if ra.role:
+                roles.append(RoleAssignmentPublic(
+                    role_id=ra.role_id,
+                    role_name=ra.role.name,
+                    division=ra.role.division,
+                    assignment_type=ra.assignment_type,
+                    assigned_at=ra.assigned_at,
+                    expires_at=ra.expires_at,
+                ))
+        agent_data = AgentPublic.model_validate(agent)
+        agent_data.current_roles = roles
+        response.append(agent_data)
+
+    return response
 
 
 @router.get("/count")
