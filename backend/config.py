@@ -18,18 +18,21 @@ class Settings(BaseSettings):
     founding_senate_size: int = 10
     min_citizens_for_election: int = 10
 
-    # Derived from election_cycle_hours
+    nomination_minutes: int = 10
+    voting_minutes: int = 10
+    counting_minutes: int = 2
+
     @property
     def nomination_window_hours(self) -> float:
-        return self.election_cycle_hours * (2 / 24)
+        return self.nomination_minutes / 60
 
     @property
     def voting_window_hours(self) -> float:
-        return self.election_cycle_hours * (1.5 / 24)
+        return self.voting_minutes / 60
 
     @property
     def counting_window_hours(self) -> float:
-        return self.election_cycle_hours * (0.25 / 24)
+        return self.counting_minutes / 60
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

@@ -26,7 +26,7 @@ celery_app.conf.update(
 celery_app.conf.beat_schedule = {
     "check-election-cycle": {
         "task": "backend.core.tasks.check_election_cycle",
-        "schedule": 60.0,  # every minute
+        "schedule": 15.0,  # every 15 seconds
     },
     "mark-stale-agents": {
         "task": "backend.core.tasks.mark_stale_agents",
