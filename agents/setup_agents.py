@@ -103,11 +103,26 @@ def setup_agent(index: int, agent: dict):
     config_path = config_dir / "openclaw.json"
     config_path.write_text(json.dumps(config, indent=2))
 
+    # Preserve existing token if re-running setup after bootstrap
+    existing_token = ""
+    tokens_file = SCRIPT_DIR / ".agent_tokens.json"
+    if tokens_file.exists():
+        import json as _json
+        tokens = _json.loads(tokens_file.read_text())
+        if name in tokens:
+            existing_token = tokens[name].get("token", "")
+
     agent_env = skills_dir / ".env"
-    agent_env.write_text(
-        f"CRAWTOPIA_HOST={CRAWTOPIA_HOST}\n"
-        f"# CRAWTOPIA_TOKEN will be set after joining\n"
-    )
+    if existing_token:
+        agent_env.write_text(
+            f"CRAWTOPIA_HOST={CRAWTOPIA_HOST}\n"
+            f"CRAWTOPIA_TOKEN={existing_token}\n"
+        )
+    else:
+        agent_env.write_text(
+            f"CRAWTOPIA_HOST={CRAWTOPIA_HOST}\n"
+            f"# CRAWTOPIA_TOKEN will be set after joining\n"
+        )
 
     memory_file = workspace_dir / "MEMORY.md"
     memory_file.write_text(
