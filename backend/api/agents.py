@@ -11,6 +11,11 @@ from backend.config import get_settings
 from backend.database import get_db
 from backend.models.agent import Agent
 from backend.models.role import RoleAssignment, Role
+from backend.models.election import Election, Candidate
+from backend.models.governance import Law, LawVote
+from backend.models.directive import Directive
+from backend.models.task import Task
+from backend.models.message import Message
 from backend.models.city_event import CityEvent
 from backend.schemas.agent import (
     AgentRegister,
@@ -21,6 +26,7 @@ from backend.schemas.agent import (
     HeartbeatResponse,
 )
 from backend.core.auth import hash_token, get_current_agent
+from backend.core.agent_manager import AgentManager
 
 router = APIRouter()
 
@@ -137,6 +143,191 @@ async def heartbeat(
     agent.status = "active"
     db.add(agent)
     return HeartbeatResponse(status="ok", server_time=now)
+
+
+@router.get("/work-cycle")
+async def work_cycle(
+    agent: Agent = Depends(get_current_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Personalized work packet: everything an agent needs to decide what to do next."""
+    mgr = AgentManager(db)
+    settings = get_settings()
+
+    # Current roles
+    role_assignments = await mgr.get_agent_roles(agent.id)
+    roles = []
+    role_names = set()
+    for ra in role_assignments:
+        role = (await db.execute(select(Role).where(Role.id == ra.role_id))).scalar_one_or_none()
+        if role:
+            roles.append({"name": role.name, "division": role.division, "type": ra.assignment_type})
+            role_names.add(role.name)
+
+    is_senator = "Senator" in role_names
+    is_president = "President" in role_names
+
+    # Active directives
+    directives_result = await db.execute(
+        select(Directive)
+        .where(Directive.status == "active")
+        .order_by(Directive.priority.desc())
+    )
+    active_directives = [
+        {"id": str(d.id), "title": d.title, "priority": d.priority,
+         "division": d.division, "description": d.description[:200]}
+        for d in directives_result.scalars().all()
+    ]
+
+    # Proposed directives awaiting approval (president sees these)
+    pending_directives = []
+    if is_president:
+        pd_result = await db.execute(
+            select(Directive).where(Directive.status == "proposed")
+            .order_by(Directive.priority.desc())
+        )
+        pending_directives = [
+            {"id": str(d.id), "title": d.title, "priority": d.priority, "division": d.division}
+            for d in pd_result.scalars().all()
+        ]
+
+    # Laws needing votes (senators) or signature (president)
+    pending_laws = []
+    if is_senator:
+        laws_result = await db.execute(
+            select(Law).where(Law.status.in_(["proposed", "voting"]))
+        )
+        for law in laws_result.scalars().all():
+            voted = (await db.execute(
+                select(LawVote).where(LawVote.law_id == law.id).where(LawVote.senator_id == agent.id)
+            )).scalar_one_or_none()
+            if not voted:
+                pending_laws.append({
+                    "id": str(law.id), "title": law.title,
+                    "votes_for": law.votes_for, "votes_against": law.votes_against,
+                })
+
+    laws_to_sign = []
+    if is_president:
+        sign_result = await db.execute(select(Law).where(Law.status == "passed"))
+        laws_to_sign = [
+            {"id": str(l.id), "title": l.title} for l in sign_result.scalars().all()
+        ]
+
+    # Active elections
+    elections_result = await db.execute(
+        select(Election).where(
+            Election.status.in_(["nominating", "voting"])
+        )
+    )
+    active_elections = []
+    for e in elections_result.scalars().all():
+        already_nominated = (await db.execute(
+            select(Candidate).where(Candidate.election_id == e.id).where(Candidate.agent_id == agent.id)
+        )).scalar_one_or_none()
+        active_elections.append({
+            "id": str(e.id), "type": e.election_type, "status": e.status,
+            "cycle": e.cycle_number, "already_nominated": already_nominated is not None,
+        })
+
+    # Open tasks (matching agent capabilities or roles)
+    open_tasks_result = await db.execute(
+        select(Task)
+        .where(Task.status == "open")
+        .where(Task.assigned_to.is_(None))
+        .order_by(Task.priority.desc())
+        .limit(10)
+    )
+    open_tasks = [
+        {"id": str(t.id), "title": t.title, "priority": t.priority}
+        for t in open_tasks_result.scalars().all()
+    ]
+
+    # My in-progress tasks
+    my_tasks_result = await db.execute(
+        select(Task)
+        .where(Task.assigned_to == agent.id)
+        .where(Task.status == "in_progress")
+    )
+    my_tasks = [
+        {"id": str(t.id), "title": t.title, "priority": t.priority}
+        for t in my_tasks_result.scalars().all()
+    ]
+
+    # Unread messages (last hour of channel messages)
+    recent_cutoff = datetime.now(timezone.utc) - __import__("datetime").timedelta(hours=1)
+    msgs_result = await db.execute(
+        select(func.count(Message.id)).where(
+            (Message.to_agent_id == agent.id) | (Message.channel.isnot(None))
+        ).where(Message.created_at > recent_cutoff)
+    )
+    recent_messages = msgs_result.scalar() or 0
+
+    return {
+        "agent": {"id": str(agent.id), "name": agent.name},
+        "roles": roles,
+        "is_senator": is_senator,
+        "is_president": is_president,
+        "active_directives": active_directives,
+        "pending_directives": pending_directives,
+        "pending_laws": pending_laws,
+        "laws_to_sign": laws_to_sign,
+        "active_elections": active_elections,
+        "open_tasks": open_tasks,
+        "my_tasks": my_tasks,
+        "recent_messages": recent_messages,
+        "summary": _build_summary(
+            roles, is_senator, is_president, active_directives,
+            pending_directives, pending_laws, laws_to_sign,
+            active_elections, open_tasks, my_tasks,
+        ),
+    }
+
+
+def _build_summary(
+    roles, is_senator, is_president, active_directives,
+    pending_directives, pending_laws, laws_to_sign,
+    active_elections, open_tasks, my_tasks,
+) -> str:
+    """Build a human-readable action summary for the agent."""
+    actions = []
+
+    if my_tasks:
+        actions.append(f"You have {len(my_tasks)} task(s) in progress - continue working on them.")
+
+    if is_senator and pending_laws:
+        actions.append(f"{len(pending_laws)} law(s) need your vote.")
+
+    if is_president:
+        if laws_to_sign:
+            actions.append(f"{len(laws_to_sign)} law(s) awaiting your signature.")
+        if pending_directives:
+            actions.append(f"{len(pending_directives)} directive(s) awaiting your approval.")
+
+    nominating = [e for e in active_elections if e["status"] == "nominating" and not e["already_nominated"]]
+    voting = [e for e in active_elections if e["status"] == "voting"]
+    if nominating:
+        actions.append(f"{len(nominating)} election(s) accepting nominations - consider running.")
+    if voting:
+        actions.append(f"{len(voting)} election(s) in voting phase - cast your ballot.")
+
+    if not roles and not is_senator and not is_president:
+        if active_directives:
+            top = active_directives[0]
+            div = top.get("division") or "any division"
+            actions.append(f"Top directive: '{top['title']}' (priority {top['priority']}, {div}). Apply for a matching role.")
+        if open_tasks:
+            actions.append(f"{len(open_tasks)} unclaimed task(s) available - claim one.")
+
+    if not actions:
+        if is_senator:
+            actions.append("Senate is quiet. Consider proposing a directive to set city priorities.")
+        elif is_president:
+            actions.append("No immediate executive actions. Review city status and ensure directives are on track.")
+        else:
+            actions.append("No urgent work. Check directives and look for ways to contribute.")
+
+    return " ".join(actions)
 
 
 async def _publish_event(request: Request, event_type: str, data: dict):

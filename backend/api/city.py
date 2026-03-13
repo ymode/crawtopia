@@ -11,6 +11,8 @@ from backend.models.agent import Agent
 from backend.models.role import Role, RoleAssignment
 from backend.models.election import Election
 from backend.models.governance import Law, ConstitutionArticle
+from backend.models.directive import Directive
+from backend.models.task import Task
 from backend.models.city_event import CityEvent
 from backend.config import get_settings
 
@@ -54,6 +56,23 @@ async def city_status(db: AsyncSession = Depends(get_db)):
         select(func.count(ConstitutionArticle.id))
     )).scalar() or 0
 
+    active_directives = (await db.execute(
+        select(func.count(Directive.id)).where(Directive.status == "active")
+    )).scalar() or 0
+
+    open_tasks = (await db.execute(
+        select(func.count(Task.id)).where(Task.status == "open")
+    )).scalar() or 0
+
+    # Top directive for quick reference
+    top_directive_result = await db.execute(
+        select(Directive)
+        .where(Directive.status == "active")
+        .order_by(Directive.priority.desc())
+        .limit(1)
+    )
+    top_directive = top_directive_result.scalar_one_or_none()
+
     has_constitution = constitution_count > 1
     has_government = filled_roles > 0
 
@@ -76,11 +95,19 @@ async def city_status(db: AsyncSession = Depends(get_db)):
             "active_elections": active_elections,
             "enacted_laws": enacted_laws,
             "constitution_articles": constitution_count,
+            "active_directives": active_directives,
+            "open_tasks": open_tasks,
         },
         "config": {
             "election_cycle_hours": settings.election_cycle_hours,
             "founding_senate_size": settings.founding_senate_size,
+            "senate_seats": settings.senate_seats,
         },
+        "top_directive": {
+            "title": top_directive.title,
+            "priority": top_directive.priority,
+            "division": top_directive.division,
+        } if top_directive else None,
     }
 
 

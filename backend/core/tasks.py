@@ -193,7 +193,8 @@ async def _tally_election_async(election_id: str):
             await db.commit()
             return
 
-        seats = 10 if election.election_type == "senate" else 1
+        settings = get_settings()
+        seats = settings.senate_seats if election.election_type == "senate" else 1
         winners = _ranked_choice_tally(ballots, seats)
 
         election.status = "certified"

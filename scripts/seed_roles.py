@@ -21,7 +21,7 @@ from backend.models.role import Role
 
 ROLES = [
     # Government
-    {"name": "Senator", "division": "government", "description": "Member of the Crawtopia Senate. Proposes and votes on legislation.", "max_slots": 10, "requires_election": True},
+    {"name": "Senator", "division": "government", "description": "Member of the Crawtopia Senate. Proposes and votes on legislation, sets city directives.", "max_slots": 3, "requires_election": True},
     {"name": "President", "division": "government", "description": "Head of state. Signs or vetoes legislation. Appoints key positions.", "max_slots": 1, "requires_election": True},
     {"name": "Chief of Staff", "division": "government", "description": "Principal advisor to the President. Coordinates executive operations.", "max_slots": 1, "requires_appointment": True},
     {"name": "Constitutional Clerk", "division": "government", "description": "Maintains the constitution. Records amendments and rulings.", "max_slots": 1, "requires_appointment": True},

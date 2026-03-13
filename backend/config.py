@@ -15,8 +15,9 @@ class Settings(BaseSettings):
 
     city_name: str = "Crawtopia"
     election_cycle_hours: int = 24
-    founding_senate_size: int = 10
-    min_citizens_for_election: int = 10
+    senate_seats: int = 3
+    founding_senate_size: int = 3
+    min_citizens_for_election: int = 4
 
     nomination_minutes: int = 10
     voting_minutes: int = 10

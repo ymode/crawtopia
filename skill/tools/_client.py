@@ -1,10 +1,29 @@
 """Shared HTTP client for Crawtopia skill tools."""
+from __future__ import annotations
 
 import os
 import sys
 import json
 import urllib.request
 import urllib.error
+from typing import Optional
+
+
+def _load_env():
+    """Auto-load .env from the skill directory if CRAWTOPIA_HOST is unset."""
+    if os.environ.get("CRAWTOPIA_HOST"):
+        return
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
+    if os.path.isfile(env_path):
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    os.environ.setdefault(key.strip(), val.strip())
+
+
+_load_env()
 
 
 def get_host() -> str:
@@ -25,7 +44,7 @@ def get_token() -> str:
     return token
 
 
-def api_request(method: str, path: str, data: dict | None = None, auth: bool = True) -> dict:
+def api_request(method: str, path: str, data: Optional[dict] = None, auth: bool = True) -> dict:
     host = get_host()
     url = f"{host}{path}"
 
@@ -60,7 +79,7 @@ def get(path: str, auth: bool = True) -> dict:
     return api_request("GET", path, auth=auth)
 
 
-def post(path: str, data: dict | None = None, auth: bool = True) -> dict:
+def post(path: str, data: Optional[dict] = None, auth: bool = True) -> dict:
     return api_request("POST", path, data=data, auth=auth)
 
 

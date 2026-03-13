@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.config import get_settings
 from backend.database import get_db
 from backend.models.agent import Agent
 from backend.models.governance import ConstitutionArticle, Law, LawVote
@@ -188,7 +189,8 @@ async def vote_on_law(
     )
     total_cast = (vote_count_result.scalar() or 0) + 1  # +1 for current vote
 
-    if total_cast >= 10:  # All senators voted
+    settings = get_settings()
+    if total_cast >= settings.senate_seats:
         if law.votes_for > law.votes_against:
             law.status = "passed"
         else:

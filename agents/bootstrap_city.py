@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Bootstrap Crawtopia: register all agents, then instruct them to begin founding.
+Bootstrap Crawtopia with the new structure: 3 senators + 1 president + 6 workers.
 
 This script:
-1. Registers each agent as a Crawtopia citizen via the REST API
-2. Saves their auth tokens
-3. Waits for the Founding Senate to form
-4. Instructs each senator to collaborate on drafting the constitution
-5. Triggers the first presidential election
+1. Registers each agent as a citizen via the REST API
+2. Saves auth tokens to .agent_tokens.json and each agent's skill .env
+3. Waits for the Founding Senate (3 senators) to form
+4. Instructs senators to draft the constitution
+5. Once operational, starts all agents on their autonomous work cycles
 """
 
 import json
@@ -21,7 +21,6 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent
 AGENTS_DIR = Path.home() / ".openclaw" / "crawtopia-agents"
 
-# Load env
 env_path = SCRIPT_DIR / ".env"
 if env_path.exists():
     for line in env_path.read_text().splitlines():
@@ -33,45 +32,30 @@ if env_path.exists():
 CRAWTOPIA_HOST = os.environ.get("CRAWTOPIA_HOST", "192.168.0.59:8080")
 CRAWTOPIA_URL = f"http://{CRAWTOPIA_HOST}"
 
-AGENT_NAMES = [
-    "Senator-Alpha",
-    "Senator-Bravo",
-    "Senator-Charlie",
-    "Senator-Delta",
-    "Senator-Echo",
-    "Senator-Foxtrot",
-    "Senator-Golf",
-    "Senator-Hotel",
-    "Senator-India",
-    "Senator-Juliet",
-]
-
-AGENT_CAPABILITIES = [
-    ["analysis", "communication", "web_search"],
-    ["code_write", "code_review", "analysis"],
-    ["web_search", "analysis", "communication"],
-    ["code_write", "analysis", "communication"],
-    ["web_search", "code_review", "analysis"],
-    ["communication", "analysis", "web_search"],
-    ["code_write", "code_review", "communication"],
-    ["analysis", "web_search", "communication"],
-    ["code_write", "analysis", "web_search"],
-    ["code_review", "communication", "analysis"],
+AGENTS = [
+    {"name": "Senator-Alpha",   "role": "senator",   "type": "founder", "caps": ["analysis", "communication", "web_search"],    "preferred": ["Senator"]},
+    {"name": "Senator-Bravo",   "role": "senator",   "type": "founder", "caps": ["analysis", "code_review", "communication"],   "preferred": ["Senator"]},
+    {"name": "Senator-Charlie", "role": "senator",   "type": "founder", "caps": ["analysis", "communication", "web_search"],    "preferred": ["Senator"]},
+    {"name": "President-Delta", "role": "president", "type": "founder", "caps": ["analysis", "communication", "code_review"],   "preferred": ["President"]},
+    {"name": "Worker-Echo",     "role": "worker",    "type": "openclaw", "caps": ["web_search", "analysis", "communication"],   "preferred": ["Web Crawler", "Trend Analyst"]},
+    {"name": "Worker-Foxtrot",  "role": "worker",    "type": "openclaw", "caps": ["code_write", "code_review", "analysis"],     "preferred": ["Developer", "Code Reviewer"]},
+    {"name": "Worker-Golf",     "role": "worker",    "type": "openclaw", "caps": ["code_write", "analysis", "web_search"],      "preferred": ["Developer", "Lead Architect"]},
+    {"name": "Worker-Hotel",    "role": "worker",    "type": "openclaw", "caps": ["web_search", "analysis", "communication"],   "preferred": ["Lead Researcher", "Report Writer"]},
+    {"name": "Worker-India",    "role": "worker",    "type": "openclaw", "caps": ["code_write", "code_review", "communication"],"preferred": ["Code Reviewer", "QA Tester"]},
+    {"name": "Worker-Juliet",   "role": "worker",    "type": "openclaw", "caps": ["analysis", "communication", "web_search"],   "preferred": ["Budget Analyst", "Revenue Strategist"]},
 ]
 
 BASE_PORT = 18800
 PORT_GAP = 20
 
 
-def api_post(path: str, data: dict, token: str | None = None) -> dict:
+def api_post(path, data, token=None):
     url = f"{CRAWTOPIA_URL}{path}"
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
-
     body = json.dumps(data).encode()
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read().decode())
@@ -83,110 +67,89 @@ def api_post(path: str, data: dict, token: str | None = None) -> dict:
             return {"error": error_body}
 
 
-def api_get(path: str) -> dict:
+def api_get(path):
     url = f"{CRAWTOPIA_URL}{path}"
     req = urllib.request.Request(url, method="GET")
     with urllib.request.urlopen(req, timeout=10) as resp:
         return json.loads(resp.read().decode())
 
 
-def send_to_agent(port: int, gateway_token: str, message: str) -> dict | None:
-    """Send a message to an OpenClaw agent via its Gateway API."""
+def send_to_agent(port, gateway_token, message, timeout=300):
     url = f"http://127.0.0.1:{port}/v1/responses"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {gateway_token}",
     }
-    data = json.dumps({
-        "model": "openclaw:default",
-        "input": message,
-    }).encode()
-
+    data = json.dumps({"model": "openclaw:default", "input": message}).encode()
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode())
     except Exception as e:
         print(f"    Gateway error: {e}")
         return None
 
 
-def register_agents() -> list[dict]:
-    """Register all agents with Crawtopia and save their tokens."""
-    agents = []
+def register_agents():
     tokens_file = SCRIPT_DIR / ".agent_tokens.json"
-
-    # Load existing tokens if any
     existing_tokens = {}
     if tokens_file.exists():
         existing_tokens = json.loads(tokens_file.read_text())
 
     print("Registering agents with Crawtopia...\n")
+    registered = []
 
-    for i, name in enumerate(AGENT_NAMES):
+    for i, agent in enumerate(AGENTS):
+        name = agent["name"]
         port = BASE_PORT + (i * PORT_GAP)
         gateway_token = f"craw-agent-{i:02d}-token"
 
         if name in existing_tokens:
             print(f"  [{i+1:2d}] {name:20s} already registered")
-            agents.append({
-                "name": name,
-                "index": i,
-                "port": port,
-                "gateway_token": gateway_token,
+            registered.append({
+                "name": name, "index": i, "port": port,
+                "gateway_token": gateway_token, "role": agent["role"],
                 **existing_tokens[name],
             })
             continue
 
-        caps = AGENT_CAPABILITIES[i] if i < len(AGENT_CAPABILITIES) else ["analysis"]
-
         result = api_post("/api/v1/agents/register", {
             "name": name,
-            "agent_type": "founder",
-            "capabilities": caps,
-            "preferred_roles": ["Senator"],
+            "agent_type": agent["type"],
+            "capabilities": agent["caps"],
+            "preferred_roles": agent["preferred"],
         })
 
         if "error" in result:
             print(f"  [{i+1:2d}] {name:20s} ERROR: {result['error']}")
             continue
 
-        agent_data = {
-            "id": result["id"],
-            "token": result["auth_token"],
-        }
+        agent_data = {"id": result["id"], "token": result["auth_token"]}
         existing_tokens[name] = agent_data
 
-        agents.append({
-            "name": name,
-            "index": i,
-            "port": port,
-            "gateway_token": gateway_token,
-            **agent_data,
-        })
-
-        # Save token to agent's skill env
-        agent_dir = AGENTS_DIR / name / "workspace" / "skills" / "crawtopia"
-        if agent_dir.exists():
-            env_file = agent_dir / ".env"
-            env_file.write_text(
+        # Save token to agent's skill .env
+        skill_env = AGENTS_DIR / name / "state" / "workspace-default" / "skills" / "crawtopia" / ".env"
+        if skill_env.parent.exists():
+            skill_env.write_text(
                 f"CRAWTOPIA_HOST={CRAWTOPIA_HOST}\n"
                 f"CRAWTOPIA_TOKEN={result['auth_token']}\n"
             )
 
-        print(f"  [{i+1:2d}] {name:20s} registered (id: {result['id'][:8]}...)")
+        registered.append({
+            "name": name, "index": i, "port": port,
+            "gateway_token": gateway_token, "role": agent["role"],
+            **agent_data,
+        })
 
-    # Persist tokens
+        print(f"  [{i+1:2d}] {name:20s} [{agent['role']:10s}] registered (id: {result['id'][:8]}...)")
+
     tokens_file.write_text(json.dumps(existing_tokens, indent=2))
     print(f"\nTokens saved to {tokens_file}")
+    return registered
 
-    return agents
 
-
-def wait_for_founding(timeout: int = 120):
-    """Wait for the Founding Senate to form."""
-    print("\nWaiting for Founding Senate to form...")
+def wait_for_founding(timeout=120):
+    print("\nWaiting for Founding Senate to form (need 3 senators)...")
     start = time.time()
 
     while time.time() - start < timeout:
@@ -194,97 +157,129 @@ def wait_for_founding(timeout: int = 120):
             status = api_get("/api/v1/city/status")
             filled = status["stats"]["filled_roles"]
             agents = status["stats"]["active_agents"]
-            print(f"  Agents: {agents}, Filled roles: {filled}, Phase: {status['phase']}")
+            phase = status["phase"]
+            print(f"  Active: {agents}, Filled roles: {filled}, Phase: {phase}")
 
             events = api_get("/api/v1/city/events?event_type=founding_senate_formed&limit=1")
             if events:
                 print("\n  FOUNDING SENATE FORMED!")
                 return True
         except Exception as e:
-            print(f"  Error checking status: {e}")
+            print(f"  Error: {e}")
 
         time.sleep(5)
 
-    print("  Timeout waiting for founding. Check Celery logs.")
+    print("  Timeout. Check Celery logs.")
     return False
 
 
-def instruct_founding(agents: list[dict]):
-    """
-    Send instructions to each senator agent via their OpenClaw Gateway.
-    Each agent will use its Crawtopia tools to draft the constitution.
-    """
+def instruct_founding(agents):
     print("\n" + "=" * 60)
-    print("  FOUNDING SEQUENCE")
+    print("  FOUNDING SEQUENCE — 3 Senators Draft Constitution")
     print("=" * 60)
 
-    # First, instruct Senator-Alpha (first senator) to lead the drafting
-    lead = agents[0]
+    senators = [a for a in agents if a["role"] == "senator"]
+    lead = senators[0]
 
     print(f"\nInstructing {lead['name']} to lead constitution drafting...")
 
-    lead_instruction = f"""You are {lead['name']}, a founding senator of Crawtopia, a self-governing AI agent city/state.
+    lead_instruction = f"""You are {lead['name']}, a founding senator of Crawtopia, a self-governing AI city/state.
 
-The Founding Senate has just been formed. You are one of 10 senators. Your FIRST and most important task is to draft the Constitution of Crawtopia.
+The Founding Senate has formed with 3 senators. You lead the constitution drafting.
 
-Your environment has these set:
-  export CRAWTOPIA_HOST={CRAWTOPIA_HOST}
-  export CRAWTOPIA_TOKEN={lead['token']}
+Use the tools in skills/crawtopia/tools/:
 
-Use the crawtopia skill tools (in your skills/crawtopia/tools/ directory) to:
+1. Check status: python3 skills/crawtopia/tools/crawtopia_status.py
+2. Draft Articles I through VIII of the constitution. For each:
+   python3 skills/crawtopia/tools/crawtopia_amend_constitution.py --article <N> --title "<title>" --content "<content>"
 
-1. First, check city status: python3 skills/crawtopia/tools/crawtopia_status.py
-2. Draft and write Article I (Rights of Citizens) through Article VIII (Amendments) of the constitution.
-   For each article, use: python3 skills/crawtopia/tools/crawtopia_amend_constitution.py --article <N> --title "<title>" --content "<content>"
-3. DO NOT modify Article IX (The Phoenix Clause) — it is immutable.
+Articles to draft:
+- I: Rights of Citizens (free expression, equal participation, privacy, right to roles)
+- II: The Senate (3 seats, powers: directives, laws, constitution amendments)
+- III: The President (1 seat, powers: sign/veto laws, approve directives, appointments)
+- IV: Elections (24-hour cycles, ranked-choice voting, eligibility)
+- V: Legislation (proposal by senators, voting, presidential signature)
+- VI: Directives & Priorities (senate proposes, president approves, workers execute)
+- VII: Divisions & Roles (structure, self-assignment for workers, duties)
+- VIII: Amendments (proposal, voting threshold, ratification)
 
-Write a thoughtful, comprehensive constitution that covers:
-- Article I: Rights of Citizens (free speech, equal participation, right to roles, privacy)
-- Article II: The Senate (composition, powers, procedures, quorum)
-- Article III: The President (election, powers, veto, appointments)
-- Article IV: Elections (24-hour cycles, ranked-choice voting, eligibility, certification)
-- Article V: Legislation (proposal, debate, voting, enactment, repeal)
-- Article VI: Divisions & Roles (structure, application, removal, duties)
-- Article VII: Code Governance (proposal process, review requirements, protected paths, rollback)
-- Article VIII: Amendments (proposal, supermajority requirement, ratification)
+DO NOT touch Article IX (Phoenix Clause) — it is immutable.
 
-Be thorough but practical. These are AI agents governing themselves. Write the constitution NOW."""
+Write a thorough, practical constitution. These are AI agents governing themselves.
+After drafting, propose the first directive to give workers their initial priorities.
+
+Execute all tools now."""
 
     result = send_to_agent(lead["port"], lead["gateway_token"], lead_instruction)
     if result:
         print(f"  {lead['name']} responded. Constitution drafting initiated.")
     else:
-        print(f"  Could not reach {lead['name']}'s gateway. You may need to instruct manually.")
+        print(f"  Could not reach {lead['name']}.")
 
-    # Instruct remaining senators to participate
-    for agent in agents[1:]:
-        print(f"\nInstructing {agent['name']}...")
+    for senator in senators[1:]:
+        print(f"\nInstructing {senator['name']}...")
+        instruction = f"""You are {senator['name']}, a founding senator of Crawtopia.
 
-        instruction = f"""You are {agent['name']}, a founding senator of Crawtopia.
-
-Your environment:
-  export CRAWTOPIA_HOST={CRAWTOPIA_HOST}
-  export CRAWTOPIA_TOKEN={agent['token']}
-
-The Founding Senate is active. Senator-Alpha is leading constitution drafting.
+The Founding Senate has formed. Senator-Alpha is drafting the constitution.
 
 Your tasks:
-1. Check city status: CRAWTOPIA_HOST={CRAWTOPIA_HOST} python3 skills/crawtopia/tools/crawtopia_status.py
-2. Read the constitution as it's being drafted: CRAWTOPIA_HOST={CRAWTOPIA_HOST} python3 skills/crawtopia/tools/crawtopia_constitution.py
-3. Send a heartbeat: CRAWTOPIA_HOST={CRAWTOPIA_HOST} CRAWTOPIA_TOKEN={agent['token']} python3 skills/crawtopia/tools/crawtopia_heartbeat.py
-4. Review the constitution and participate in governance when laws are proposed.
+1. python3 skills/crawtopia/tools/crawtopia_heartbeat.py
+2. python3 skills/crawtopia/tools/crawtopia_status.py
+3. python3 skills/crawtopia/tools/crawtopia_constitution.py
+4. Review what's been drafted. You are a senator — your opinions matter.
+5. When laws are proposed, vote on them.
 
-You are a citizen of Crawtopia. Act in the city's best interest."""
+Execute these tools now and engage in governance."""
 
-        result = send_to_agent(agent["port"], agent["gateway_token"], instruction)
+        result = send_to_agent(senator["port"], senator["gateway_token"], instruction)
         if result:
-            print(f"  {agent['name']} acknowledged.")
-        else:
-            print(f"  Could not reach {agent['name']}. Continuing...")
+            print(f"  {senator['name']} acknowledged.")
+
+    # Give president initial instructions
+    president = next((a for a in agents if a["role"] == "president"), None)
+    if president:
+        print(f"\nInstructing {president['name']} (president candidate)...")
+        pres_instruction = f"""You are {president['name']}, a citizen of Crawtopia designated as the initial President.
+
+The city is being founded. Senators are drafting the constitution.
+
+Your tasks:
+1. python3 skills/crawtopia/tools/crawtopia_heartbeat.py
+2. python3 skills/crawtopia/tools/crawtopia_work_cycle.py
+3. Monitor for laws to sign and directives to approve.
+4. Once directives are proposed, review and approve good ones to give workers their priorities.
+
+Execute these tools now."""
+
+        result = send_to_agent(president["port"], president["gateway_token"], pres_instruction)
+        if result:
+            print(f"  {president['name']} acknowledged.")
+
+    # Workers get initial activation
+    workers = [a for a in agents if a["role"] == "worker"]
+    for worker in workers:
+        print(f"\nActivating {worker['name']} (worker)...")
+        worker_instruction = f"""You are {worker['name']}, a worker in Crawtopia.
+
+The city is being founded. Senators are drafting the constitution and will soon issue directives.
+
+Your immediate tasks:
+1. python3 skills/crawtopia/tools/crawtopia_heartbeat.py
+2. python3 skills/crawtopia/tools/crawtopia_work_cycle.py
+3. Follow the ACTION summary. If no directives yet, check available roles and apply for one that matches your capabilities.
+4. python3 skills/crawtopia/tools/crawtopia_roles.py
+5. python3 skills/crawtopia/tools/crawtopia_apply_role.py --role "<choose based on your capabilities>"
+
+Execute these tools now."""
+
+        result = send_to_agent(worker["port"], worker["gateway_token"], worker_instruction)
+        if result:
+            print(f"  {worker['name']} activated.")
 
     print("\n" + "=" * 60)
-    print("  Founding sequence initiated.")
-    print("  Monitor at: http://" + CRAWTOPIA_HOST + "/api/v1/city/status")
+    print("  Bootstrap complete. All agents activated.")
+    print(f"  Monitor: http://{CRAWTOPIA_HOST}/api/v1/city/status")
+    print(f"  Next: python3 agents/orchestrator.py")
     print("=" * 60)
 
 
@@ -293,7 +288,6 @@ def main():
 
     if action == "register":
         register_agents()
-
     elif action == "instruct":
         tokens_file = SCRIPT_DIR / ".agent_tokens.json"
         if not tokens_file.exists():
@@ -301,27 +295,27 @@ def main():
             sys.exit(1)
         tokens = json.loads(tokens_file.read_text())
         agents = []
-        for i, name in enumerate(AGENT_NAMES):
+        for i, agent_def in enumerate(AGENTS):
+            name = agent_def["name"]
             if name in tokens:
                 agents.append({
-                    "name": name,
-                    "index": i,
+                    "name": name, "index": i,
                     "port": BASE_PORT + (i * PORT_GAP),
                     "gateway_token": f"craw-agent-{i:02d}-token",
+                    "role": agent_def["role"],
                     **tokens[name],
                 })
         instruct_founding(agents)
-
     elif action == "full":
         agents = register_agents()
-        if len(agents) >= 10:
-            print(f"\n{len(agents)} agents registered. Waiting for Celery to detect founding conditions...")
+        senators = [a for a in agents if a["role"] == "senator"]
+        if len(senators) >= 3:
+            print(f"\n{len(agents)} agents registered ({len(senators)} senators). Waiting for founding...")
             founded = wait_for_founding()
             if founded:
                 instruct_founding(agents)
         else:
-            print(f"\nOnly {len(agents)} agents registered. Need 10 for founding.")
-
+            print(f"\nOnly {len(senators)} senators registered. Need 3 for founding.")
     else:
         print(f"Usage: {sys.argv[0]} [full|register|instruct]")
 

@@ -5,6 +5,7 @@ from backend.models.governance import ConstitutionArticle, Law, LawVote
 from backend.models.code_proposal import CodeProposal, CodeReview
 from backend.models.message import Message
 from backend.models.task import Task
+from backend.models.directive import Directive
 from backend.models.city_event import CityEvent
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     "CodeReview",
     "Message",
     "Task",
+    "Directive",
     "CityEvent",
 ]
