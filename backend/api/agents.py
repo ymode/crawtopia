@@ -5,10 +5,12 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.config import get_settings
 from backend.database import get_db
 from backend.models.agent import Agent
+from backend.models.role import RoleAssignment, Role
 from backend.models.city_event import CityEvent
 from backend.schemas.agent import (
     AgentRegister,
@@ -75,11 +77,15 @@ async def list_agents(
     status: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    query = select(Agent).order_by(Agent.joined_at.desc())
+    query = (
+        select(Agent)
+        .options(selectinload(Agent.role_assignments).selectinload(RoleAssignment.role))
+        .order_by(Agent.joined_at.desc())
+    )
     if status:
         query = query.where(Agent.status == status)
     result = await db.execute(query)
-    agents = result.scalars().all()
+    agents = result.scalars().unique().all()
 
     response = []
     for agent in agents:
