@@ -37,15 +37,18 @@ def _get_clob_client():
     try:
         from py_clob_client.client import ClobClient
 
+        funder = settings.polymarket_wallet_address or None
         _clob_client = ClobClient(
             CLOB_HOST,
             key=settings.polymarket_private_key,
             chain_id=137,
+            signature_type=1,  # POLY_PROXY — Magic Link / email wallets
+            funder=funder,
         )
         creds = _clob_client.create_or_derive_api_creds()
         _clob_client.set_api_creds(creds)
         _api_creds_cached = True
-        logger.info("Polymarket CLOB client initialised")
+        logger.info("Polymarket CLOB client initialised (funder=%s)", funder)
     except Exception:
         logger.exception("Failed to initialise Polymarket CLOB client")
         _clob_client = None
@@ -112,27 +115,40 @@ async def get_balance() -> dict:
         return {"error": str(exc), "balance": 0}
 
 
+DATA_API_HOST = "https://data-api.polymarket.com"
+
+
 async def get_positions() -> list[dict]:
-    """Return open positions."""
-    client = _get_clob_client()
-    if client is None:
+    """Return open positions via Polymarket Data API."""
+    settings = get_settings()
+    wallet = settings.polymarket_wallet_address
+    if not wallet:
         return []
 
     try:
-        positions = client.get_positions()
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"{DATA_API_HOST}/positions",
+                params={"user": wallet},
+            )
+            resp.raise_for_status()
+            raw = resp.json()
+
         enriched = []
-        for pos in positions:
+        for pos in raw if isinstance(raw, list) else raw.get("positions", []):
             enriched.append({
-                "token_id": pos.get("asset", {}).get("token_id", ""),
-                "condition_id": pos.get("asset", {}).get("condition_id", ""),
+                "token_id": pos.get("asset", {}).get("token_id", pos.get("tokenId", "")),
+                "condition_id": pos.get("asset", {}).get("condition_id", pos.get("conditionId", "")),
+                "market": pos.get("title", pos.get("market", "")),
+                "outcome": pos.get("outcome", ""),
                 "size": float(pos.get("size", 0)),
-                "avg_price": float(pos.get("avgPrice", 0)),
+                "avg_price": float(pos.get("avgPrice", pos.get("averagePrice", 0))),
+                "cur_price": float(pos.get("curPrice", pos.get("currentPrice", 0))) or None,
                 "side": pos.get("side", ""),
-                "cur_price": None,
             })
         return enriched
-    except Exception as exc:
-        logger.exception("Failed to fetch positions")
+    except Exception:
+        logger.exception("Failed to fetch positions from Data API")
         return []
 
 
