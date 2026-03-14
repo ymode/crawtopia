@@ -79,6 +79,11 @@ def create_agent_config(index: int, agent: dict) -> dict:
         },
         "tools": {
             "profile": "full",
+            "web": {
+                "search": {
+                    "provider": "openai",
+                },
+            },
         },
     }
 

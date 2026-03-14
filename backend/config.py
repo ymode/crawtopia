@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     voting_minutes: int = 10
     counting_minutes: int = 2
 
+    # Polymarket
+    polymarket_private_key: str = ""
+    polymarket_relayer_api_key: str = ""
+    polymarket_wallet_address: str = ""
+    polymarket_max_trade_usd: float = 5.0
+    polymarket_daily_limit_usd: float = 20.0
+    polymarket_enabled: bool = True
+
     @property
     def nomination_window_hours(self) -> float:
         return self.nomination_minutes / 60

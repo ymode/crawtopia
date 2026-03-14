@@ -7,6 +7,7 @@ from backend.models.message import Message
 from backend.models.task import Task
 from backend.models.directive import Directive
 from backend.models.city_event import CityEvent
+from backend.models.polymarket_trade import PolymarketTrade
 
 __all__ = [
     "Agent",
@@ -24,4 +25,5 @@ __all__ = [
     "Task",
     "Directive",
     "CityEvent",
+    "PolymarketTrade",
 ]

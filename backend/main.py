@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import get_settings
-from backend.api import health, agents, websocket, governance, elections, roles, city, messages, directives, tasks
+from backend.api import health, agents, websocket, governance, elections, roles, city, messages, directives, tasks, polymarket
 
 
 @asynccontextmanager
@@ -43,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(messages.router, prefix="/api/v1/messages", tags=["messages"])
     app.include_router(directives.router, prefix="/api/v1/directives", tags=["directives"])
     app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["tasks"])
+    app.include_router(polymarket.router, prefix="/api/v1/polymarket", tags=["polymarket"])
     app.include_router(websocket.router, prefix="/ws", tags=["websocket"])
 
     return app

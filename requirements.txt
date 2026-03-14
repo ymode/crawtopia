@@ -26,6 +26,9 @@ gitpython>=3.1.44
 # HTTP client (for research agents, web access)
 httpx>=0.28.0
 
+# Polymarket prediction market trading
+py-clob-client>=0.34.0
+
 # WebSocket support (included with uvicorn[standard])
 websockets>=14.0
 
