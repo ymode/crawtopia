@@ -4,6 +4,7 @@
 import argparse
 import os
 import sys
+import urllib.parse
 
 sys.path.insert(0, os.path.dirname(__file__))
 from _client import get
@@ -17,7 +18,7 @@ def main():
 
     params = f"?limit={args.limit}"
     if args.query:
-        params += f"&query={args.query}"
+        params += f"&query={urllib.parse.quote(args.query)}"
 
     data = get(f"/api/v1/polymarket/markets{params}", auth=False)
 
