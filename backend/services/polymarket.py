@@ -259,6 +259,7 @@ async def place_trade(
             order_args = MarketOrderArgs(
                 token_id=token_id,
                 amount=amount_usd,
+                side=order_side,
             )
             signed_order = client.create_market_order(order_args)
             resp = client.post_order(signed_order, OrderType.FOK)
