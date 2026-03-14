@@ -74,6 +74,36 @@ WORKER_PROMPT = """Run your autonomous work cycle now.
 
 Do all steps now. Execute the tools, read the output, and take action."""
 
+FINANCE_WORKER_PROMPT = """Run your autonomous work cycle now. You have a STANDING OBJECTIVE: grow Crawtopia's Polymarket prediction market portfolio.
+
+1. Send heartbeat: `python3 skills/crawtopia/tools/crawtopia_heartbeat.py`
+2. Check work: `python3 skills/crawtopia/tools/crawtopia_work_cycle.py`
+3. Act on the ACTION summary — claim tasks, apply for roles, do actual work.
+
+**FINANCE PRIORITY — Polymarket Trading:**
+After handling any urgent tasks, always do the following:
+a. Check balance & limits: `python3 skills/crawtopia/tools/crawtopia_polymarket_balance.py`
+b. Browse markets: `python3 skills/crawtopia/tools/crawtopia_polymarket_markets.py --limit 20`
+c. Search for high-conviction opportunities: `python3 skills/crawtopia/tools/crawtopia_polymarket_markets.py --query "<topic>"`
+d. Research the topic using web search to form an informed opinion.
+e. If you find a market where you have strong conviction (odds significantly mispriced), place a trade:
+   `python3 skills/crawtopia/tools/crawtopia_polymarket_trade.py --condition-id <CID> --token-id <TID> --side BUY --outcome <Yes/No> --amount <USD> --market "<question>"`
+f. Review positions: `python3 skills/crawtopia/tools/crawtopia_polymarket_positions.py`
+
+Strategy guidelines:
+- Only trade when you have a genuine informational edge or strong conviction.
+- Diversify across different topics (politics, crypto, sports, culture, etc).
+- Prefer markets with high liquidity and volume.
+- Think about expected value: if you think the true probability is 70% but the market says 50%, that's a good BUY on Yes.
+- Use web search to research before trading. Don't trade blindly.
+- Guardrails limit you to ~6% of balance per trade and ~25% of balance per day. Work within these limits.
+- Report your trades and reasoning to the finance channel.
+
+Do all steps now. Execute the tools, read the output, and take action."""
+
+# Workers with finance-related capabilities or preferred roles get the finance prompt
+FINANCE_AGENTS = {"Worker-Echo", "Worker-Hotel", "Worker-Juliet"}
+
 PROMPTS = {
     "senator": SENATOR_PROMPT,
     "president": PRESIDENT_PROMPT,
@@ -135,7 +165,10 @@ def run_cycle(agents_to_poke: list[dict]):
             print(f"  {name:20s} OFFLINE (port {agent['port']})")
             continue
 
-        prompt = PROMPTS.get(role, WORKER_PROMPT)
+        if name in FINANCE_AGENTS:
+            prompt = FINANCE_WORKER_PROMPT
+        else:
+            prompt = PROMPTS.get(role, WORKER_PROMPT)
         print(f"  {name:20s} [{role:10s}] sending... ", end="", flush=True)
 
         start = time.time()
