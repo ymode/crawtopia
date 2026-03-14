@@ -42,7 +42,7 @@ def _get_clob_client():
             CLOB_HOST,
             key=settings.polymarket_private_key,
             chain_id=137,
-            signature_type=1,  # POLY_PROXY — Magic Link / email wallets
+            signature_type=2,  # GNOSIS_SAFE — external wallet (Trust Wallet, MetaMask, etc.)
             funder=funder,
         )
         creds = _clob_client.create_or_derive_api_creds()
@@ -158,6 +158,21 @@ class GuardrailError(Exception):
     pass
 
 
+async def get_guardrail_limits() -> dict:
+    """Compute current dollar limits from percentage settings and live balance."""
+    settings = get_settings()
+    bal = await get_balance()
+    balance_usd = bal.get("balance", 0)
+    return {
+        "balance_usd": balance_usd,
+        "max_trade_pct": settings.polymarket_max_trade_pct,
+        "daily_limit_pct": settings.polymarket_daily_limit_pct,
+        "max_trade_usd": round(balance_usd * settings.polymarket_max_trade_pct / 100, 2),
+        "daily_limit_usd": round(balance_usd * settings.polymarket_daily_limit_pct / 100, 2),
+        "enabled": settings.polymarket_enabled,
+    }
+
+
 async def _check_guardrails(amount_usd: float, db: AsyncSession):
     """Raise GuardrailError if the trade violates any limit."""
     settings = get_settings()
@@ -165,9 +180,14 @@ async def _check_guardrails(amount_usd: float, db: AsyncSession):
     if not settings.polymarket_enabled:
         raise GuardrailError("Polymarket trading is disabled by admin.")
 
-    if amount_usd > settings.polymarket_max_trade_usd:
+    limits = await get_guardrail_limits()
+    max_trade = limits["max_trade_usd"]
+    daily_limit = limits["daily_limit_usd"]
+
+    if max_trade > 0 and amount_usd > max_trade:
         raise GuardrailError(
-            f"Trade ${amount_usd:.2f} exceeds per-trade limit of ${settings.polymarket_max_trade_usd:.2f}"
+            f"Trade ${amount_usd:.2f} exceeds per-trade limit of "
+            f"${max_trade:.2f} ({settings.polymarket_max_trade_pct}% of ${limits['balance_usd']:.2f} balance)"
         )
 
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -178,11 +198,12 @@ async def _check_guardrails(amount_usd: float, db: AsyncSession):
     )
     daily_spent = float(result.scalar())
 
-    if daily_spent + amount_usd > settings.polymarket_daily_limit_usd:
+    if daily_limit > 0 and daily_spent + amount_usd > daily_limit:
         raise GuardrailError(
             f"Trade would push daily spend to ${daily_spent + amount_usd:.2f}, "
-            f"exceeding limit of ${settings.polymarket_daily_limit_usd:.2f} "
-            f"(already spent ${daily_spent:.2f} today)"
+            f"exceeding limit of ${daily_limit:.2f} "
+            f"({settings.polymarket_daily_limit_pct}% of ${limits['balance_usd']:.2f} balance, "
+            f"already spent ${daily_spent:.2f} today)"
         )
 
 

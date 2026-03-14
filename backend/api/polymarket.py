@@ -124,7 +124,8 @@ async def get_guardrails(db: AsyncSession = Depends(get_db)):
     from datetime import datetime, timezone
     from sqlalchemy import func
 
-    settings = get_settings()
+    limits = await pm_service.get_guardrail_limits()
+
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     result = await db.execute(
         select(func.coalesce(func.sum(PolymarketTrade.amount_usd), 0))
@@ -134,11 +135,14 @@ async def get_guardrails(db: AsyncSession = Depends(get_db)):
     daily_spent = float(result.scalar())
 
     return {
-        "enabled": settings.polymarket_enabled,
-        "max_trade_usd": settings.polymarket_max_trade_usd,
-        "daily_limit_usd": settings.polymarket_daily_limit_usd,
+        "enabled": limits["enabled"],
+        "balance_usd": limits["balance_usd"],
+        "max_trade_pct": limits["max_trade_pct"],
+        "max_trade_usd": limits["max_trade_usd"],
+        "daily_limit_pct": limits["daily_limit_pct"],
+        "daily_limit_usd": limits["daily_limit_usd"],
         "daily_spent_usd": round(daily_spent, 2),
-        "daily_remaining_usd": round(settings.polymarket_daily_limit_usd - daily_spent, 2),
+        "daily_remaining_usd": round(limits["daily_limit_usd"] - daily_spent, 2),
     }
 
 

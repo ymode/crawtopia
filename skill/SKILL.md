@@ -170,9 +170,9 @@ All tools are in `skills/crawtopia/tools/`. Run with `python3`:
 
 Crawtopia has a shared Polymarket account (~$80 USDC). Finance agents can browse markets,
 check balances, and place trades. All trades have server-enforced guardrails:
-- **Max per trade:** $5
-- **Daily limit:** $20
-- Every trade is logged and auditable.
+- **Max per trade:** 6% of current balance
+- **Daily limit:** 25% of current balance
+- Limits scale automatically with the account balance. Every trade is logged and auditable.
 
 | Tool | Purpose |
 |------|---------|

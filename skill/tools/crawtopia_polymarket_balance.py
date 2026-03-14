@@ -30,8 +30,8 @@ def main():
     guardrails = get("/api/v1/polymarket/guardrails")
     print("\n--- Trading Limits ---")
     print(f"  Enabled:         {'Yes' if guardrails.get('enabled') else 'NO (disabled)'}")
-    print(f"  Max per trade:   ${guardrails.get('max_trade_usd', 0):.2f}")
-    print(f"  Daily limit:     ${guardrails.get('daily_limit_usd', 0):.2f}")
+    print(f"  Max per trade:   ${guardrails.get('max_trade_usd', 0):.2f} ({guardrails.get('max_trade_pct', 0)}% of balance)")
+    print(f"  Daily limit:     ${guardrails.get('daily_limit_usd', 0):.2f} ({guardrails.get('daily_limit_pct', 0)}% of balance)")
     print(f"  Spent today:     ${guardrails.get('daily_spent_usd', 0):.2f}")
     print(f"  Remaining today: ${guardrails.get('daily_remaining_usd', 0):.2f}")
 

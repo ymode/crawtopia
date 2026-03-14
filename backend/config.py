@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     polymarket_private_key: str = ""
     polymarket_relayer_api_key: str = ""
     polymarket_wallet_address: str = ""
-    polymarket_max_trade_usd: float = 5.0
-    polymarket_daily_limit_usd: float = 20.0
+    polymarket_max_trade_pct: float = 6.0    # Max single trade as % of balance
+    polymarket_daily_limit_pct: float = 25.0  # Max daily spend as % of balance
     polymarket_enabled: bool = True
 
     @property
