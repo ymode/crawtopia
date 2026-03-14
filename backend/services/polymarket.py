@@ -72,16 +72,18 @@ async def get_markets(query: str | None = None, limit: int = 20) -> list[dict]:
 
 
 async def search_markets(query: str, limit: int = 10) -> list[dict]:
-    """Text search on Gamma markets endpoint."""
+    """Text search on Gamma markets endpoint (fetch extra, filter locally)."""
+    fetch_limit = max(limit * 10, 100)
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(
             f"{GAMMA_HOST}/markets",
-            params={"active": "true", "closed": "false", "limit": limit},
+            params={"active": "true", "closed": "false", "limit": fetch_limit},
         )
         resp.raise_for_status()
         markets = resp.json()
         q_lower = query.lower()
-        return [m for m in markets if q_lower in m.get("question", "").lower()]
+        return [m for m in markets if q_lower in m.get("question", "").lower()
+                or q_lower in m.get("description", "").lower()][:limit]
 
 
 # ---------- Account data ----------

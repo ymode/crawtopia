@@ -37,12 +37,8 @@ async def list_markets(
 ):
     """Browse active Polymarket prediction markets."""
     if query:
-        events = await pm_service.search_markets(query, limit=limit)
-        markets = []
-        for ev in events:
-            for m in ev.get("markets", [ev]):
-                markets.append(_gamma_to_market(m))
-        return markets[:limit]
+        raw = await pm_service.search_markets(query, limit=limit)
+        return [_gamma_to_market(m) for m in raw]
 
     raw = await pm_service.get_markets(limit=limit)
     return [_gamma_to_market(m) for m in raw]
