@@ -148,6 +148,8 @@ async def get_guardrails(db: AsyncSession = Depends(get_db)):
 
 def _gamma_to_market(raw: dict) -> MarketPublic:
     """Convert Gamma API market object to our schema."""
+    import json as _json
+
     tokens = []
     for t in raw.get("tokens", []):
         tokens.append({
@@ -156,15 +158,46 @@ def _gamma_to_market(raw: dict) -> MarketPublic:
             "price": t.get("price", ""),
         })
 
+    outcomes = raw.get("outcomes", [])
+    if isinstance(outcomes, str):
+        try:
+            outcomes = _json.loads(outcomes)
+        except (ValueError, TypeError):
+            outcomes = []
+
+    outcome_prices = raw.get("outcomePrices", [])
+    if isinstance(outcome_prices, str):
+        try:
+            outcome_prices = _json.loads(outcome_prices)
+        except (ValueError, TypeError):
+            outcome_prices = []
+
+    clob_token_ids = raw.get("clobTokenIds", "")
+    if isinstance(clob_token_ids, str):
+        try:
+            clob_ids = _json.loads(clob_token_ids)
+        except (ValueError, TypeError):
+            clob_ids = []
+    else:
+        clob_ids = clob_token_ids or []
+
+    if not tokens and clob_ids and outcomes:
+        for i, cid in enumerate(clob_ids):
+            tokens.append({
+                "token_id": cid,
+                "outcome": outcomes[i] if i < len(outcomes) else f"Outcome {i}",
+                "price": outcome_prices[i] if i < len(outcome_prices) else "",
+            })
+
     return MarketPublic(
         condition_id=raw.get("condition_id", raw.get("conditionId", "")),
         question=raw.get("question", raw.get("title", "")),
         description=raw.get("description", "")[:500],
-        outcomes=raw.get("outcomes", []),
-        outcome_prices=raw.get("outcomePrices", []),
+        outcomes=outcomes,
+        outcome_prices=outcome_prices,
         tokens=tokens,
         volume=float(raw.get("volume", 0) or 0),
         liquidity=float(raw.get("liquidity", 0) or 0),
-        end_date=raw.get("end_date_iso", raw.get("endDate", "")),
+        end_date=raw.get("end_date_iso", raw.get("endDate", raw.get("endDateIso", ""))),
         active=raw.get("active", True),
     )
